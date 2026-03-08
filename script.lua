@@ -2140,21 +2140,30 @@ if GameName == "DOORS" then
         Callback = function(Value) extSpeedVal = Value end
     })
 
-    -- Moteur de Vitesse Duale Logique
+    -- Moteur de Vitesse Duale Logique (V2 - No Rubberband Bypass)
     task.spawn(function()
-        game:GetService("RunService").RenderStepped:Connect(function()
+        game:GetService("RunService").Heartbeat:Connect(function()
             local char = LocalPlayer.Character
             if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Humanoid") then
                 local HRP = char.HumanoidRootPart
                 local HUM = char.Humanoid
-                if HUM.MoveDirection.Magnitude > 0 then
-                    if extSpeed then
-                        -- Moteur Extreme (CFrame Snapping) : Pas de vélocité physique
-                        HRP.CFrame = HRP.CFrame + (HUM.MoveDirection * (extSpeedVal * 0.05))
-                    elseif safeSpeed then
-                        -- Moteur Safe (Noclip Velocity)
-                        local vel = HUM.MoveDirection * (16 + (safeSpeedVal * 3))
-                        HRP.Velocity = Vector3.new(vel.X, HRP.Velocity.Y, vel.Z)
+                
+                if extSpeed or safeSpeed then
+                    if HUM.MoveDirection.Magnitude > 0 then
+                        -- Modifier le WalkSpeed directement pour berner l'Anti-Cheat (Protégé par le metatable __newindex)
+                        if extSpeed then
+                            HUM.WalkSpeed = 16 * extSpeedVal
+                        elseif safeSpeed then
+                            HUM.WalkSpeed = 16 + (safeSpeedVal * 3)
+                        end
+                        -- Noclip Absolu : Désactiver la collision physique
+                        for _, v in pairs(char:GetDescendants()) do
+                            if v:IsA("BasePart") and v.CanCollide then
+                                v.CanCollide = false
+                            end
+                        end
+                    else
+                        HUM.WalkSpeed = 16 -- Remise à zéro si immobile
                     end
                 end
             end
@@ -2175,9 +2184,9 @@ if GameName == "DOORS" then
             if instInteract then
                 for _, prompt in pairs(Workspace:GetDescendants()) do
                     if prompt:IsA("ProximityPrompt") then
-                        -- FIX 1: Ignorer les placards pour ne pas bloquer la sortie
+                        -- FIX V8.3 : Instant Interact Sélectif. Les actions complexes (cacher, utiliser un item) gardent leur temps de base pour éviter de briser le script local de DOORS.
                         local action = prompt.ActionText:lower()
-                        if not action:find("hide") and not action:find("exit") then
+                        if action:find("open") or action:find("loot") then
                             prompt.HoldDuration = 0
                         end
                     end
@@ -2233,6 +2242,17 @@ if GameName == "DOORS" then
         Callback = function(v) remHalt = v end
     })
 
+    -- Serveur de Silence (Pour désintégrer l'audio des entités)
+    local function MuteEntityAudio(entityName)
+        for _, sound in pairs(Workspace:GetDescendants()) do
+            if sound:IsA("Sound") and sound.Parent and sound.Parent.Name:find(entityName) then
+                sound.Volume = 0
+                sound:Stop()
+                sound:Destroy()
+            end
+        end
+    end
+
     -- Memory Obliteration Loop
     task.spawn(function()
         while task.wait(0.1) do
@@ -2240,27 +2260,27 @@ if GameName == "DOORS" then
                 -- Anti-Screech
                 if remScreech then
                     local screech = Workspace.CurrentCamera:FindFirstChild("Screech") or LocalPlayer.Character:FindFirstChild("Screech")
-                    if screech then screech:Destroy() end
+                    if screech then screech:Destroy(); MuteEntityAudio("Screech") end
                 end
                 
                 -- L'Ordre de l'Oblitération Totale
                 if extraEntities then
-                    -- 1. Timothy (L'Araignée de Tiroir) : Il apparaît dans les modèles joueurs
+                    -- 1. Timothy (Araignée)
                     local timothy = Workspace.CurrentCamera:FindFirstChild("Spider") or LocalPlayer.Character:FindFirstChild("Spider")
-                    if timothy then timothy:Destroy() end
+                    if timothy then timothy:Destroy(); MuteEntityAudio("Spider") end
 
                     -- 2. Glitch (Le Monstre Vert)
-                    if Workspace:FindFirstChild("Glitch") then Workspace.Glitch:Destroy() end
+                    if Workspace:FindFirstChild("Glitch") then Workspace.Glitch:Destroy(); MuteEntityAudio("Glitch") end
 
-                    -- 3. Eyes (Le Monstre à Multiples Yeux) : Si supprimé de l'écran local = Pas de dégâts.
+                    -- 3. Eyes (Le Monstre à Multiples Yeux)
                     for _, obj in pairs(Workspace:GetChildren()) do
-                        if obj.Name == "Eyes" then obj:Destroy() end
+                        if obj.Name == "Eyes" then obj:Destroy(); MuteEntityAudio("Eyes") end
                     end
 
                     -- 4. Dread (L'Entité de l'Heure Minuit)
-                    if Workspace:FindFirstChild("Dread") then Workspace.Dread:Destroy() end
+                    if Workspace:FindFirstChild("Dread") then Workspace.Dread:Destroy(); MuteEntityAudio("Dread") end
 
-                    -- 5. Snare & Dupe : Ces pièges sont spawn sur le sol ou portes
+                    -- 5. Snare & Dupe
                     local rooms = Workspace:FindFirstChild("CurrentRooms")
                     if rooms then
                         for _, room in pairs(rooms:GetChildren()) do
@@ -2273,10 +2293,11 @@ if GameName == "DOORS" then
                     end
                 end
                 
-                -- Anti-Halt : Détruit les murs bloqueurs de Halt et l'entité si générée de force
+                -- Anti-Halt
                 if remHalt then
                     if Workspace:FindFirstChild("Halt") then
                         Workspace.Halt:Destroy()
+                        MuteEntityAudio("Halt")
                     end
                     if LocalPlayer.PlayerGui:FindFirstChild("MainUI") and LocalPlayer.PlayerGui.MainUI:FindFirstChild("HaltMessage") then
                         LocalPlayer.PlayerGui.MainUI.HaltMessage.Visible = false
@@ -2373,7 +2394,7 @@ if GameName == "DOORS" then
 
     GTab:CreateToggle({Name = "💀 ESP Monstres (Vrais Noms)", CurrentValue = false, Flag = "D_ESP_M", Callback = function(v) espMonsters = v; if not v then ClearESP() end end})
     GTab:CreateToggle({Name = "🚪 ESP Prochaine Porte", CurrentValue = false, Flag = "D_ESP_D", Callback = function(v) espDoors = v; if not v then ClearESP() end end})
-    GTab:CreateToggle({Name = "📦 ESP Objets (Clés, Or, Crucifix)", CurrentValue = false, Flag = "D_ESP_I", Callback = function(v) espItems = v; if not v then ClearESP() end end})
+    GTab:CreateToggle({Name = "📦 ESP Objets (Clés, Levrier, Or)", CurrentValue = false, Flag = "D_ESP_I", Callback = function(v) espItems = v; if not v then ClearESP() end end})
 
     task.spawn(function()
         while task.wait(0.5) do
@@ -2392,7 +2413,6 @@ if GameName == "DOORS" then
                 if latestRoom then
                     local roomFolder = Workspace.CurrentRooms:FindFirstChild(tostring(latestRoom.Value))
                     if roomFolder and roomFolder:FindFirstChild("Door") then
-                        -- La porte s'affiche pour le niveau suivant
                         ManageESP(roomFolder.Door, "🚪 Porte " .. tostring(latestRoom.Value + 1), Color3.fromRGB(0, 255, 0), false)
                     end
                 end
@@ -2405,6 +2425,8 @@ if GameName == "DOORS" then
                         for _, item in pairs(room:GetDescendants()) do
                             if item:IsA("Model") then
                                 if item.Name == "KeyObtain" then ManageESP(item, "🔑 Clé", Color3.fromRGB(0, 255, 255), false)
+                                elseif item.Name == "LeverForGate" or item.Name == "Switch" then ManageESP(item, "🕹️ LEVIER", Color3.fromRGB(255, 100, 0), true)
+                                elseif item.Name == "LibraryBook" then ManageESP(item, "📖 Livre", Color3.fromRGB(200, 200, 255), false)
                                 elseif item.Name == "GoldPile" then ManageESP(item, "💰 Or", Color3.fromRGB(255, 215, 0), false)
                                 elseif item.Name == "Crucifix" then ManageESP(item, "✝️ CRUCIFIX", Color3.fromRGB(150, 0, 255), true)
                                 elseif item.Name == "FigureRagdoll" then ManageESP(item, "🛑 FIGURE", Color3.fromRGB(255, 0, 0), true) end

@@ -2140,7 +2140,7 @@ if GameName == "DOORS" then
         Callback = function(Value) extSpeedVal = Value end
     })
 
-    -- Moteur de Vitesse Duale Logique (V2 - No Rubberband Bypass)
+    -- Moteur de Vitesse Duale Logique (V3 - Velocity Vector Engine)
     task.spawn(function()
         game:GetService("RunService").Heartbeat:Connect(function()
             local char = LocalPlayer.Character
@@ -2150,20 +2150,16 @@ if GameName == "DOORS" then
                 
                 if extSpeed or safeSpeed then
                     if HUM.MoveDirection.Magnitude > 0 then
-                        -- Modifier le WalkSpeed directement pour berner l'Anti-Cheat (Protégé par le metatable __newindex)
-                        if extSpeed then
-                            HUM.WalkSpeed = 16 * extSpeedVal
-                        elseif safeSpeed then
-                            HUM.WalkSpeed = 16 + (safeSpeedVal * 3)
-                        end
+                        -- Propulsion Linéaire sans toucher au WalkSpeed
+                        local speedMult = extSpeed and (16 * extSpeedVal) or (16 + (safeSpeedVal * 3))
+                        HRP.Velocity = Vector3.new(HUM.MoveDirection.X * speedMult, HRP.Velocity.Y, HUM.MoveDirection.Z * speedMult)
+                        
                         -- Noclip Absolu : Désactiver la collision physique
                         for _, v in pairs(char:GetDescendants()) do
                             if v:IsA("BasePart") and v.CanCollide then
                                 v.CanCollide = false
                             end
                         end
-                    else
-                        HUM.WalkSpeed = 16 -- Remise à zéro si immobile
                     end
                 end
             end
@@ -2172,27 +2168,45 @@ if GameName == "DOORS" then
 
     local instInteract = false
     GTab:CreateToggle({
-        Name = "⚡ Instant Interact (0s Ouverture)", CurrentValue = false, Flag = "Doors_Inst",
+        Name = "⚡ Instant Interact (Action Immédiate V3)", CurrentValue = false, Flag = "Doors_Inst",
         Callback = function(v) 
             instInteract = v
         end
     })
 
-    -- Boucle Rapide pour Prompts
+    -- Déclencheur Événementiel (V3)
+    game:GetService("ProximityPromptService").PromptButtonHoldBegan:Connect(function(prompt, player)
+        if instInteract and player == LocalPlayer then
+            fireproximityprompt(prompt)
+        end
+    end)
+
+    local autoLoot = false
+    GTab:CreateToggle({
+        Name = "🧲 Auto Loot Aura (Or & Tiroirs)", CurrentValue = false, Flag = "Doors_AutoL",
+        Callback = function(v) autoLoot = v end
+    })
+
+    -- Boucle Auto Loot
     task.spawn(function()
-        game:GetService("RunService").RenderStepped:Connect(function()
-            if instInteract then
+        while task.wait(0.2) do
+            if autoLoot and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                local hrp = LocalPlayer.Character.HumanoidRootPart
                 for _, prompt in pairs(Workspace:GetDescendants()) do
                     if prompt:IsA("ProximityPrompt") then
-                        -- FIX V8.3 : Instant Interact Sélectif. Les actions complexes (cacher, utiliser un item) gardent leur temps de base pour éviter de briser le script local de DOORS.
                         local action = prompt.ActionText:lower()
-                        if action:find("open") or action:find("loot") then
-                            prompt.HoldDuration = 0
+                        if action:find("loot") or action:find("open") or action:find("search") then
+                            local part = prompt.Parent
+                            if part and part:IsA("BasePart") then
+                                if (hrp.Position - part.Position).Magnitude <= 15 then
+                                    fireproximityprompt(prompt)
+                                end
+                            end
                         end
                     end
                 end
             end
-        end)
+        end
     end)
 
     local trueFullbright = false

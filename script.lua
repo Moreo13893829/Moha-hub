@@ -123,7 +123,7 @@ InitBypass()
 local GameName = "Unknown"
 local GameId = game.GameId
 
-if GameId == 4070267272 or PlaceId == 12411473842 or (Workspace:FindFirstChild("Rooms") and Workspace:FindFirstChild("Map")) then GameName = "Pressure"
+if GameId == 4070267272 or PlaceId == 12411473842 or PlaceId == 12516499317 or (Workspace:FindFirstChild("Rooms") and Workspace:FindFirstChild("Map")) then GameName = "Pressure"
 elseif GameId == 3995325725 or PlaceId == 11392373641 or Workspace:FindFirstChild("Animatronics") then GameName = "FNAF"
 elseif GameId == 3374229615 or PlaceId == 9015014224 or PlaceId == 10450270085 then GameName = "JJS"
 elseif GameId == 2585655519 or PlaceId == 6516141723 or PlaceId == 6839171747 then GameName = "DOORS"
@@ -133,7 +133,6 @@ elseif GameId == 6605051052 or PlaceId == 18362489115 or Workspace:FindFirstChil
 elseif GameId == 5573426291 or PlaceId == 16016830560 then GameName = "You're Hired"
 elseif GameId == 3114886999 or PlaceId == 10449761463 then GameName = "The Strongest Battlegrounds"
 elseif Workspace:FindFirstChild("Plots") and game:GetService("ReplicatedStorage"):FindFirstChild("Packages") and game:GetService("ReplicatedStorage").Packages:FindFirstChild("Net") then GameName = "Steal a Brainrot"
-elseif PlaceId == 6447798030 or GameId == 2465330368 or (Workspace:FindFirstChild("Map") and Workspace.Map:FindFirstChild("Speakers")) then GameName = "Funky Friday"
 end
 
 -- 🧠 1.5 DÉTECTION DYNAMIQUE PAR NOM (Pour les modes variés / lobbys)
@@ -154,7 +153,6 @@ if GameName == "Unknown" then
                 ["you're hired"] = "You're Hired",
                 ["the strongest battlegrounds"] = "The Strongest Battlegrounds",
                 ["steal a brainrot"] = "Steal a Brainrot",
-                ["funky friday"] = "Funky Friday",
                 ["amber alert"] = "Amber Alert",
                 ["conquer the world"] = "Conquer The World"
             }
@@ -814,9 +812,12 @@ if GameName == "Blade Ball" then
             if ball:IsA("Part") then
                 local dist = (ball.Position - myChar.HumanoidRootPart.Position).Magnitude
                 local velocity = ball.Velocity.Magnitude
+                local direction = ball.Velocity.Unit
+                local playerDir = (myChar.HumanoidRootPart.Position - ball.Position).Unit
+                local dotProduct = direction:Dot(playerDir)
                 
-                -- Formule de détection VRAI (Prend en compte l'accélération)
-                if dist < math.max(autoParryDist, velocity * 0.45) then
+                -- Formule de détection VRAI (Prend en compte l'accélération et la direction)
+                if dotProduct > 0.5 and dist < math.max(autoParryDist, velocity * 0.55) then
                     VirtualInputManager:SendMouseButtonEvent(0,0,0,true,game,1)
                     task.wait(0.01)
                     VirtualInputManager:SendMouseButtonEvent(0,0,0,false,game,1)
@@ -949,8 +950,19 @@ if GameName == "MM2" then
                         local role = "Innocent"
                         local color = Color3.fromRGB(0, 255, 0)
                         
-                        local isMurderer = (p.Character:FindFirstChild("Knife") or (p.Backpack and p.Backpack:FindFirstChild("Knife")))
-                        local isSheriff = (p.Character:FindFirstChild("Gun") or (p.Backpack and p.Backpack:FindFirstChild("Gun")))
+                        local isMurderer = false
+                        local isSheriff = false
+                        
+                        local checkTool = function(tool)
+                            local name = tool.Name:lower()
+                            if name == "knife" or name:find("knife") or name:find("melee") or name:find("blade") then isMurderer = true end
+                            if name == "gun" or name:find("gun") or name:find("revolver") or name:find("pistol") then isSheriff = true end
+                        end
+                        
+                        for _, t in ipairs(p.Character:GetChildren()) do if t:IsA("Tool") then checkTool(t) end end
+                        if p:FindFirstChild("Backpack") then
+                            for _, t in ipairs(p.Backpack:GetChildren()) do if t:IsA("Tool") then checkTool(t) end end
+                        end
                         
                         if isMurderer then role = "🔪 MURDERER"; color = Color3.fromRGB(255, 0, 0)
                         elseif isSheriff then role = "🔫 SHERIFF"; color = Color3.fromRGB(0, 150, 255) end
@@ -960,8 +972,12 @@ if GameName == "MM2" then
                 end
             end
             if gunDropESP then
-                local gunDrop = Workspace:FindFirstChild("Normal")
-                if gunDrop and gunDrop:IsA("Tool") then
+                local gunDrop = Workspace:FindFirstChild("GunDrop") or Workspace:FindFirstChild("GunDrop_Server")
+                local normal = Workspace:FindFirstChild("Normal")
+                if not gunDrop and normal then gunDrop = normal:FindFirstChild("GunDrop") or normal:FindFirstChild("GunDrop_Server") end
+                if not gunDrop and normal and normal:IsA("Tool") then gunDrop = normal end
+
+                if gunDrop then
                     ManageESP(gunDrop, "⚠️ GUN AU SOL ⚠️", Color3.fromRGB(255, 255, 0), true)
                 end
             end
@@ -1164,6 +1180,43 @@ if GameName == "Fatal Floors" then
 
     GTab:CreateSection("⚡ Survie & Automatisation")
     
+    local autoFarmFF = false
+    GTab:CreateToggle({
+        Name = "🤖 Auto Farm (Récupère Or/Items & Vend)", CurrentValue = false, Flag = "FF_AutoFarm",
+        Callback = function(v)
+            autoFarmFF = v
+            if v then
+                spawn(function()
+                    while autoFarmFF and task.wait(0.5) do
+                        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                            local hrp = LocalPlayer.Character.HumanoidRootPart
+                            -- Collect Loot
+                            for _, obj in pairs(Workspace:GetDescendants()) do
+                                if obj:IsA("ProximityPrompt") and obj.Enabled and obj.ActionText:lower():find("take") then
+                                    local oldPos = hrp.CFrame
+                                    hrp.CFrame = obj.Parent.CFrame
+                                    task.wait(0.2)
+                                    fireproximityprompt(obj)
+                                    task.wait(0.2)
+                                end
+                            end
+                            -- Sell Loot
+                            for _, obj in pairs(Workspace:GetDescendants()) do
+                                if obj:IsA("ProximityPrompt") and obj.Enabled and obj.ActionText:lower():find("sell") then
+                                    local oldPos = hrp.CFrame
+                                    hrp.CFrame = obj.Parent.CFrame
+                                    task.wait(0.2)
+                                    fireproximityprompt(obj)
+                                    task.wait(0.2)
+                                end
+                            end
+                        end
+                    end
+                end)
+            end
+        end
+    })
+
     GTab:CreateButton({
         Name = "🚪 Auto-Escape (TP à l'Ascenseur)",
         Callback = function()
@@ -1781,76 +1834,6 @@ if GameName == "Steal a Brainrot" then
 end
 
 -- =========================================================================
--- 🎤 TAB FUNKY FRIDAY
--- =========================================================================
-if GameName == "Funky Friday" then
-    local GTab = Window:CreateTab("🎤 Funky Friday", 4483362458)
-
-    GTab:CreateButton({
-        Name = "🌟 Charger l'Auto Player 'METEOR' (Giga-Vétéran)",
-        Callback = function()
-            pcall(function()
-                -- Meteor : L'indiscutable ROI du jeu de rythme (Nécessite Top Exécuteur)
-                loadstring(game:HttpGet("https://raw.githubusercontent.com/Spoorlos/meteor/main/main.lua"))()
-                Rayfield:Notify({Title = "Meteor", Content = "Le GUI Meteor a été injecté avec succès !", Duration = 4})
-            end)
-        end
-    })
-
-    GTab:CreateButton({
-        Name = "🚀 Charger l'Auto Player (Kiriot22 / Winnable)",
-        Callback = function()
-            pcall(function()
-                -- L'excellent Autoplayer Open Source (Hook GC Profond)
-                loadstring(game:HttpGet("https://raw.githubusercontent.com/winnable/Funky-Friday-Autoplayer/main/Script.lua"))()
-            end)
-        end
-    })
-
-    GTab:CreateButton({
-        Name = "🤖 Charger l'Auto Player (Wally's Original)",
-        Callback = function()
-            pcall(function()
-                -- Le script légendaire de Wally (Peut nécessiter Synapse/Krn/etc.)
-                loadstring(game:HttpGet("https://raw.githubusercontent.com/wally-rblx/funky-friday-autoplay/main/main.lua"))()
-            end)
-        end
-    })
-
-    GTab:CreateSection("⚡ Animation & Performance")
-    
-    local antiLag = false
-    GTab:CreateToggle({
-        Name = "📉 Anti-Lag (Retire Animations Scène)", CurrentValue = false, Flag = "FF_AntiLag",
-        Callback = function(v) 
-            antiLag = v 
-            if Workspace:FindFirstChild("Map") and Workspace.Map:FindFirstChild("Spawns") then
-                for _, obj in pairs(Workspace.Map:GetDescendants()) do
-                    if obj:IsA("ParticleEmitter") or obj:IsA("PointLight") or obj:IsA("SpotLight") then
-                        obj.Enabled = not v
-                    end
-                end
-            end
-            Rayfield:Notify({Title = "Performance", Content = v and "Animations de la map désactivées." or "Animations restaurées.", Duration = 2})
-        end
-    })
-
-    GTab:CreateButton({
-        Name = "🎤 Masquer Interface Jeu (Cinématique)",
-        Callback = function()
-            local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
-            if PlayerGui and PlayerGui:FindFirstChild("ScreenGui") then
-                for _, v in pairs(PlayerGui.ScreenGui:GetChildren()) do
-                    if v:IsA("Frame") and v.Name ~= "GameUI" then
-                        v.Visible = not v.Visible
-                    end
-                end
-            end
-        end
-    })
-end
-
--- =========================================================================
 -- 🚨 TAB AMBER ALERT
 -- =========================================================================
 if GameName == "Amber Alert" then
@@ -2177,7 +2160,12 @@ if GameName == "DOORS" then
     -- Déclencheur Événementiel (V3)
     game:GetService("ProximityPromptService").PromptButtonHoldBegan:Connect(function(prompt, player)
         if instInteract and player == LocalPlayer then
-            fireproximityprompt(prompt)
+            local action = prompt.ActionText:lower()
+            local objText = prompt.ObjectText:lower()
+            -- Ignore closets/lockers so players can still hide
+            if not objText:find("locker") and not objText:find("wardrobe") and not action:find("hide") then
+                fireproximityprompt(prompt)
+            end
         end
     end)
 
@@ -2195,7 +2183,9 @@ if GameName == "DOORS" then
                 for _, prompt in pairs(Workspace:GetDescendants()) do
                     if prompt:IsA("ProximityPrompt") then
                         local action = prompt.ActionText:lower()
+                        local objText = prompt.ObjectText:lower()
                         if action:find("loot") or action:find("open") or action:find("search") then
+                            if objText:find("locker") or objText:find("wardrobe") then continue end
                             local part = prompt.Parent
                             if part and part:IsA("BasePart") then
                                 if (hrp.Position - part.Position).Magnitude <= 15 then
